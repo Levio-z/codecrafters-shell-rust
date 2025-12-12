@@ -8,10 +8,13 @@ fn main() {
         io::stdout().flush().unwrap();
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
-        if command.trim() == "exit" {
+        let command_trim= command.trim();
+        if command_trim == "exit" {
             break;
+        }else if command_trim.starts_with("echo") {
+            println!("{}", command_trim.strip_prefix("echo ").unwrap());
+        }else{
+            println!("{}: command not found", command_trim);
         }
-        println!("{}: command not found", command.trim());
-
     }
 }
