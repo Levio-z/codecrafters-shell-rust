@@ -1,9 +1,9 @@
 #[allow(unused_imports)]
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::{
-    fs::OpenOptions,
+    fs::{File, OpenOptions},
     path::{Path, PathBuf},
-    process::Command,
+    process::{ChildStdout, Command, Stdio},
     sync::LazyLock,
     vec,
 };
@@ -11,7 +11,11 @@ mod auto_completion;
 use anyhow::Context;
 use auto_completion::MyCompleter;
 use is_executable::IsExecutable;
-use rustyline::{Editor, config::Configurer, error::ReadlineError,config::{Config, CompletionType}};
+use rustyline::{
+    Editor,
+    config::{CompletionType, Config, Configurer},
+    error::ReadlineError,
+};
 use strum::{AsRefStr, Display, EnumIter, EnumString};
 pub static GLOBAL_VEC: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     let path = std::env::var("PATH").unwrap_or("".to_string());
@@ -97,70 +101,98 @@ fn parse_and_handle_line(line: &str) -> anyhow::Result<()> {
     let line_trim = line.trim();
     let tokens = split_quotes(line_trim);
     let iter = tokens.into_iter();
-    for token in iter {
-        let last_result = handle(token.content.into_iter());
+    let len = iter.len();
+    let std_in = Stdio::null();
+    let mut std_out = std::io::stdout();
+    let mut std_err = std::io::stderr();
+    let mut child_stdins = vec![];
+    child_stdins.push(std_in);
+    for (i, token) in iter.enumerate() {
+        let token_redirect_err = token.redirect_err.as_deref();
+        let token_redirect_out = token.redirect.as_deref();
 
-        match token.redirect_err {
-            None => {
-                if !last_result.stderr.is_empty() {
-                    eprint!("{}", last_result.stderr);
-                }
-            }
-            Some(redirect_err) => {
-                let mut f = OpenOptions::new()
-                    .append(token.append_err)
-                    .write(true)
-                    .open(redirect_err)?;
-                std::io::Write::write_all(&mut f, last_result.stderr.as_bytes())
-                    .context("write file failed")?;
+        let last_result = handle(
+            child_stdins.pop(),
+            token.content.into_iter(),
+            i == len - 1,
+            handle_redirect_file(token.append_out, token_redirect_out)?,
+            handle_redirect_file(token.append_err, token_redirect_err)?,
+        );
+
+        if !last_result.stderr.is_empty() {
+            if token_redirect_err.is_none() {
+                std_err.write_all(&last_result.stderr)?;
+            } else {
+                handle_redirect_file(token.append_err, token_redirect_err)?
+                    .as_mut()
+                    .unwrap()
+                    .write_all(&last_result.stderr)?;
             }
         }
-        match token.redirect {
-            None => {
-                if !last_result.stdout.is_empty() {
-                    print!("{}", last_result.stdout);
-                }
+        if token_redirect_out.is_none() {
+            if let Some(stdout) = last_result.stdout_stdio {
+                child_stdins.push(Stdio::from(stdout));
+            } else if i != len - 1 {
+                let (read_pipe, mut write_pipe) = os_pipe::pipe()?;
+                write_pipe.write_all(&last_result.stdout)?;
+                drop(write_pipe);
+                child_stdins.push(Stdio::from(read_pipe));
+            } else if !last_result.stdout.is_empty() {
+                std_out.write_all(&last_result.stdout)?;
             }
-            Some(redirect) => {
-                let mut f = OpenOptions::new()
-                    .append(token.append_out)
-                    .write(true)
-                    .open(redirect)?;
-                std::io::Write::write_all(&mut f, last_result.stdout.as_bytes())
-                    .context("write file failed")?;
+        } else {
+            if !last_result.stdout.is_empty() {
+                handle_redirect_file(token.append_out, token_redirect_out)?
+                    .as_mut()
+                    .unwrap()
+                    .write_all(&last_result.stdout)?;
             }
         }
     }
     Ok(())
 }
+
+fn handle_redirect_file(append: bool, redirect_file: Option<&str>) -> anyhow::Result<Option<File>> {
+    let f = if let Some(redirect_file) = redirect_file {
+        Some(OpenOptions::new()
+        .append(append)
+        .write(true)
+        .open(redirect_file)?)
+    } else {
+        None
+    };
+    Ok(f)
+}
 /// 表示一个命令执行结果
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct CommandResult {
-    stdout: String, // 标准输出
+    stdout: Vec<u8>, // 标准输出
     #[allow(dead_code)]
-    stderr: String, // 标准错误
+    stderr: Vec<u8>, // 标准错误
     #[allow(dead_code)]
     exit_code: i32, // 退出码，0表示成功
+    stdout_stdio: Option<ChildStdout>,
 }
 impl Default for CommandResult {
     fn default() -> Self {
         Self {
-            stdout: "".to_string(),
-            stderr: "".to_string(),
+            stdout: vec![],
+            stderr: vec![],
             exit_code: 0,
+            stdout_stdio: None,
         }
     }
 }
 impl CommandResult {
     fn new_with_stdout(stdout: String) -> Self {
         Self {
-            stdout,
+            stdout: stdout.into_bytes(),
             ..Default::default()
         }
     }
     fn new_with_stderr(stderr: String) -> Self {
         Self {
-            stderr,
+            stderr: stderr.into_bytes(),
             exit_code: 1,
             ..Default::default()
         }
@@ -176,7 +208,13 @@ pub enum BuildinCommand {
     Type,
 }
 
-fn handle(mut params: impl Iterator<Item = String>) -> CommandResult {
+fn handle(
+    std_in: Option<Stdio>,
+    mut params: impl Iterator<Item = String>,
+    last: bool,
+    redirect_out: Option<File>,
+    redirect_err: Option<File>,
+) -> CommandResult {
     let command = params.next().context("command is empty");
     let command = match command {
         Ok(command) => command,
@@ -249,17 +287,72 @@ fn handle(mut params: impl Iterator<Item = String>) -> CommandResult {
                         command
                     ));
                 }
-                Command::new(file_name.as_ref().unwrap())
-                    .args(params)
-                    .output()
-                    .map(|output| CommandResult {
-                        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                        exit_code: output.status.code().unwrap_or(1),
-                    })
-                    .unwrap_or_else(|_| {
-                        CommandResult::new_with_stderr(format!("{}: failed to execute\n", command))
-                    })
+                if last {
+                    Command::new(file_name.as_ref().unwrap())
+                        .args(params)
+                        .stdin(std_in.unwrap_or(Stdio::null()))
+                        .stdout(if let Some(redirect_out) = redirect_out {
+                            Stdio::from(redirect_out)
+                        } else {
+                            Stdio::inherit()
+                        })
+                        .stderr(if let Some(redirect_err) = redirect_err {
+                            Stdio::from(redirect_err)
+                        } else {
+                            Stdio::inherit()
+                        })
+                        .output()
+                        .map(|output| CommandResult {
+                            stdout: Vec::new(),
+                            stderr: Vec::new(),
+                            exit_code: output.status.code().unwrap_or(1),
+                            stdout_stdio: None,
+                        })
+                        .unwrap_or_else(|_| {
+                            CommandResult::new_with_stderr(format!(
+                                "{}: failed to execute\n",
+                                command
+                            ))
+                        })
+                } else {
+                    let is_redirect_out = redirect_out.is_some();
+                    Command::new(file_name.as_ref().unwrap())
+                        .args(params)
+                        .stdin(std_in.unwrap_or(Stdio::null()))
+                        .stdout(if let Some(redirect_out) = redirect_out {
+                            Stdio::from(redirect_out)
+                        } else {
+                            Stdio::piped()
+                        })
+                        .stderr(if let Some(redirect_err) = redirect_err {
+                            Stdio::from(redirect_err)
+                        } else {
+                            Stdio::inherit()
+                        })
+                        .spawn()
+                        .map(|mut child| {
+                            let child_stdin = child
+                                .stdout
+                                .take()
+                                .expect("Failed to open child stdin pipe");
+                            CommandResult {
+                                stdout: Vec::new(),
+                                stderr: Vec::new(),
+                                exit_code: 0,
+                                stdout_stdio: if is_redirect_out {
+                                    None
+                                } else {
+                                    Some(child_stdin)
+                                },
+                            }
+                        })
+                        .unwrap_or_else(|_| {
+                            CommandResult::new_with_stderr(format!(
+                                "{}: failed to execute\n",
+                                command
+                            ))
+                        })
+                }
             }
             None => CommandResult::new_with_stderr(format!("{}: command not found\n", command)),
         },
@@ -321,7 +414,7 @@ fn split_quotes(line: &str) -> Vec<Token> {
     for ch in line.chars() {
         match match_type {
             MatchType::Default => match ch {
-                ch if ch.is_whitespace() => {
+                ch if ch.is_whitespace() || ch == '|' => {
                     if !string.is_empty() {
                         if redirect {
                             let _ = token.set_redirect(string.clone(), token.append_out);
@@ -334,7 +427,11 @@ fn split_quotes(line: &str) -> Vec<Token> {
                         }
                         string = String::new();
                     }
-                    continue;
+                    if ch == '|' {
+                        res.push(token);
+                        token = Token::new();
+                        continue;
+                    }
                 }
                 '\'' => match_type = MatchType::SingleQuote,
                 '"' => match_type = MatchType::DoubleQuote,

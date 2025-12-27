@@ -14,3 +14,4 @@ strum = { version = "0.27.2", features = ["derive"] }
 strum_macros = "0.27.2"
 rustyline = "17.0.2"
 radix_trie = "0.3.0"
+os_pipe = "1.1.0"

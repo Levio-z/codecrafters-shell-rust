@@ -46,14 +46,15 @@ impl Completer for MyCompleter {
         let prefix = &line[..pos];
         let prefix_keys: Vec<Pair> = GLOBAL_TRIES
             .get_raw_descendant(prefix)
-            .map(|trie|
-            trie.keys()
-            .map(|k| Pair {
-                display: k.clone(),
-                replacement: k.clone(),
+            .map(|trie| {
+                trie.keys()
+                    .map(|k| Pair {
+                        display: k.clone(),
+                        replacement: k.clone(),
+                    })
+                    .collect()
             })
-            .collect())
-            .unwrap_or_else(|| Vec::new()) ;
+            .unwrap_or_else(|| Vec::new());
         Ok((0, prefix_keys))
     }
     fn update(&self, line: &mut LineBuffer, start: usize, elected: &str, cl: &mut Changeset) {
