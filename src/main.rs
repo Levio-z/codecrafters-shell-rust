@@ -1,27 +1,29 @@
 #[allow(unused_imports)]
-use std::io::{self, Read, Write};
+mod auto_completion;
+mod builtin_commands;
+mod command_handler;
+mod history;
+mod lexer;
 use std::{
     fs::{File, OpenOptions},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     process::{ChildStdout, Stdio},
     sync::LazyLock,
     vec,
 };
-mod auto_completion;
-mod builtin_commands;
-mod history;
+
 use anyhow::Context;
 use auto_completion::MyCompleter;
-use is_executable::IsExecutable;
-mod command_handler;
 use command_handler::CommandHandlerFactory;
+use is_executable::IsExecutable;
 use rustyline::{
     Editor,
     config::{CompletionType, Config, Configurer},
     error::ReadlineError,
     history::{FileHistory, History},
 };
-use strum::{AsRefStr, Display, EnumIter, EnumString};
+
 pub static GLOBAL_VEC: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     let path = std::env::var("PATH").unwrap_or("".to_string());
     std::env::split_paths(&std::ffi::OsStr::new(&path)).collect::<Vec<_>>()
@@ -53,11 +55,13 @@ impl Token {
     fn set_redirect(&mut self, redirect: String, append: bool) -> anyhow::Result<()> {
         create_or_truncate_file(&redirect, append)?;
         self.redirect = Some(redirect);
+        self.append_out = append;
         Ok(())
     }
     fn set_redirect_err(&mut self, redirect_err: String, append: bool) -> anyhow::Result<()> {
         create_or_truncate_file(&redirect_err, append)?;
         self.redirect_err = Some(redirect_err);
+        self.append_err = append;
         Ok(())
     }
 }
@@ -201,16 +205,6 @@ impl CommandResult {
         }
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Display, EnumString, AsRefStr, EnumIter)]
-#[strum(serialize_all = "lowercase")]
-pub enum BuildinCommand {
-    Exit,
-    Pwd,
-    Cd,
-    Echo,
-    Type,
-    History,
-}
 
 fn handle(
     std_in: Option<Stdio>,
@@ -267,7 +261,7 @@ fn find_executable_file_in_paths(executable_file: &str, paths: &Vec<PathBuf>) ->
     None
 }
 
-use std::fs;
+use std::{fs, result};
 
 fn find_all_executable_file_in_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
     paths
@@ -286,116 +280,10 @@ fn find_all_executable_file_in_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
-enum MatchType {
-    Default,
-    DoubleQuote,
-    SingleQuote,
-    Escaping,
-    DoubleQuoteEscaping,
-}
-
 fn split_quotes(line: &str) -> Vec<Token> {
-    let mut token = Token::new();
-    let mut match_type = MatchType::Default;
-    let mut string = String::new();
-    let mut res = Vec::new();
-    let mut redirect = false;
-    let mut redirect_err = false;
-    for ch in line.chars() {
-        match match_type {
-            MatchType::Default => match ch {
-                ch if ch.is_whitespace() || ch == '|' => {
-                    if !string.is_empty() {
-                        if redirect {
-                            let _ = token.set_redirect(string.clone(), token.append_out);
-                            redirect = false;
-                        } else if redirect_err {
-                            let _ = token.set_redirect_err(string.clone(), token.append_err);
-                            redirect_err = false;
-                        } else {
-                            token.add_content(string.clone());
-                        }
-                        string = String::new();
-                    }
-                    if ch == '|' {
-                        res.push(token);
-                        token = Token::new();
-                        continue;
-                    }
-                }
-                '\'' => match_type = MatchType::SingleQuote,
-                '"' => match_type = MatchType::DoubleQuote,
-                '\\' => match_type = MatchType::Escaping,
-                '>' => {
-                    if redirect {
-                        token.append_out = true;
-                        continue;
-                    } else if redirect_err {
-                        token.append_err = true;
-                        continue;
-                    }
-
-                    if !string.is_empty() {
-                        if string.ends_with("1") {
-                            string.pop();
-                            redirect = true;
-                            token.append_out = false;
-                        } else if string.ends_with("2") {
-                            string.pop();
-                            redirect_err = true;
-                            token.append_err = false;
-                        }
-                    } else {
-                        redirect = true;
-                        token.append_out = false;
-                    }
-                    if !string.is_empty() {
-                        token.add_content(string.clone());
-                    }
-                    string = String::new();
-                }
-                _ => string.push(ch),
-            },
-            MatchType::SingleQuote => match ch {
-                '\'' => match_type = MatchType::Default,
-                _ => string.push(ch),
-            },
-            MatchType::DoubleQuote => match ch {
-                '"' => match_type = MatchType::Default,
-                '\\' => match_type = MatchType::DoubleQuoteEscaping,
-                _ => string.push(ch),
-            },
-            MatchType::DoubleQuoteEscaping => match ch {
-                '"' => {
-                    string.push(ch);
-                    match_type = MatchType::DoubleQuote;
-                }
-                '\\' => {
-                    string.push(ch);
-                    match_type = MatchType::DoubleQuote;
-                }
-                _ => {
-                    string.push('\\');
-                    string.push(ch);
-                    match_type = MatchType::DoubleQuote;
-                }
-            },
-            MatchType::Escaping => {
-                string.push(ch);
-                match_type = MatchType::Default;
-            }
-        }
-    }
-
-    if redirect {
-        let _ = token.set_redirect(string.clone(), token.append_out);
-    } else if redirect_err {
-        let _ = token.set_redirect_err(string.clone(), token.append_err);
-    } else {
-        token.add_content(string.clone());
-    }
-    res.push(token);
-    res
+    // 使用新的词法分析器
+    let raw_tokens = lexer::tokenize_line(line);
+    lexer::raw_tokens_to_tokens(raw_tokens)
 }
 
 #[test]

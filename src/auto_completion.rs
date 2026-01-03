@@ -11,12 +11,12 @@ use rustyline::{
     validate::{ValidationContext, ValidationResult, Validator},
 };
 
-use crate::{BuildinCommand, GLOBAL_VEC, find_all_executable_file_in_paths};
+use crate::{GLOBAL_VEC, builtin_commands::BuiltinCommand, find_all_executable_file_in_paths};
 pub struct MyCompleter;
 use strum::IntoEnumIterator;
 
 static GLOBAL_TRIES: LazyLock<Trie<String, ()>> = LazyLock::new(|| {
-    let iter = BuildinCommand::iter();
+    let iter = BuiltinCommand::iter();
     let mut commands: Vec<String> = iter.map(|cmd| cmd.to_string()).collect();
     commands.extend(
         find_all_executable_file_in_paths(&GLOBAL_VEC)

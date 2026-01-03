@@ -1,12 +1,13 @@
-use std::{
-    fs::File,
-    process::{ChildStdout, Stdio},
-};
+use std::{fs::File, process::Stdio};
 
 use anyhow::Context;
 use rustyline::{Editor, history::FileHistory};
 
-use crate::{CommandResult, auto_completion::MyCompleter, builtin_commands::BuiltinCommandFactory};
+use crate::{
+    CommandResult,
+    auto_completion::MyCompleter,
+    builtin_commands::{BuiltinCommand, BuiltinFactory},
+};
 /// 命令处理器接口
 pub trait CommandHandler {
     fn execute(
@@ -35,7 +36,7 @@ impl CommandHandler for BuiltinCommandHandler {
         _redirect_err: Option<File>,
         rl: &mut Editor<MyCompleter, FileHistory>,
     ) -> CommandResult {
-        if let Some(cmd) = BuiltinCommandFactory::create_command(command) {
+        if let Some(cmd) = BuiltinFactory::create_command(command) {
             cmd.execute(params, rl)
         } else {
             CommandResult::new_with_stderr(format!("{}: command not found\n", command))
@@ -143,7 +144,7 @@ pub struct CommandHandlerFactory;
 
 impl CommandHandlerFactory {
     pub fn create_handler(command: &str) -> Box<dyn CommandHandler> {
-        match command.parse::<crate::BuildinCommand>() {
+        match command.parse::<BuiltinCommand>() {
             Ok(_) => Box::new(BuiltinCommandHandler),
             Err(_) => Box::new(ExternalCommandHandler),
         }

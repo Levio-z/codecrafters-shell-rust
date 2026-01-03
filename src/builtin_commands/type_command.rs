@@ -2,7 +2,7 @@ use super::prelude::*;
 /// Type命令处理器
 pub struct TypeCommand;
 
-impl BuiltinCommand for TypeCommand {
+impl Builtin for TypeCommand {
     fn execute(
         &self,
         mut params: Box<dyn Iterator<Item = String>>,
@@ -14,7 +14,7 @@ impl BuiltinCommand for TypeCommand {
             Err(e) => return CommandResult::new_with_stderr(e.to_string()),
         };
 
-        match command_type.parse::<crate::BuildinCommand>() {
+        match command_type.parse::<BuiltinCommand>() {
             Ok(_) => {
                 CommandResult::new_with_stdout(format!("{} is a shell builtin\n", command_type))
             }

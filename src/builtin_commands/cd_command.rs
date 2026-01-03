@@ -2,7 +2,7 @@ use super::prelude::*;
 /// Cd命令处理器
 pub struct CdCommand;
 
-impl BuiltinCommand for CdCommand {
+impl Builtin for CdCommand {
     fn execute(
         &self,
         mut params: Box<dyn Iterator<Item = String>>,

@@ -2,7 +2,7 @@ use super::prelude::*;
 /// History命令处理器
 pub struct HistoryCommand;
 
-impl BuiltinCommand for HistoryCommand {
+impl Builtin for HistoryCommand {
     fn execute(
         &self,
         mut params: Box<dyn Iterator<Item = String>>,

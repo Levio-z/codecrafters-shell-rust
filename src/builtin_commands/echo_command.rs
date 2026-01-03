@@ -2,7 +2,7 @@ use super::prelude::*;
 /// Echo命令处理器
 pub struct EchoCommand;
 
-impl BuiltinCommand for EchoCommand {
+impl Builtin for EchoCommand {
     fn execute(
         &self,
         params: Box<dyn Iterator<Item = String>>,
