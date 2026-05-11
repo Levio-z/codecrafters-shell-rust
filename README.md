@@ -1,35 +1,58 @@
-[![progress-banner](https://backend.codecrafters.io/progress/shell/639959d7-0e7f-45a9-9ebe-45ac902e3156)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# Codecrafters Shell
 
-This is a starting point for Rust solutions to the
-["Build Your Own Shell" Challenge](https://app.codecrafters.io/courses/shell/overview).
+基于 Rust 实现的 POSIX 兼容 Shell，能够解释执行 shell 命令、运行外部程序及内置命令（如 `cd`、`pwd`、`echo` 等）。
 
-In this challenge, you'll build your own POSIX compliant shell that's capable of
-interpreting shell commands, running external programs and builtin commands like
-cd, pwd, echo and more. Along the way, you'll learn about shell command parsing,
-REPLs, builtin commands, and more.
+## 功能特性
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+- **词法分析**：对输入进行分词，支持引号、转义符、管道符和重定向
+- **语法解析**：解析简单命令和管道命令
+- **命令执行**：支持内置命令和外部命令
+- **内置命令**：
+  - `cd` - 切换目录
+  - `pwd` - 显示当前工作目录
+  - `echo` - 输出文本
+  - `type` - 显示命令类型
+  - `history` - 命令历史
+  - `exit` - 退出 Shell
+- **I/O 重定向**：支持 `>`、`>>`、`<`、`<<`、`>&`、`<&`
+- **管道**：使用 `|` 连接多个命令
+- **自动补全**：Tab 补全命令
+- **命令历史**：使用 rustyline 实现持久化历史
 
-# Passing the first stage
+## 架构设计
 
-The entry point for your `shell` implementation is in `src/main.rs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
-
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+```text
+输入行
+    │
+    ▼
+┌─────────────────┐
+│  词法分析器      │  分词处理
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  语法解析器      │  解析命令与管道
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  命令执行器      │  执行内置/外部命令
+└─────────────────┘
 ```
 
-Time to move on to the next stage!
+## 使用方法
 
-# Stage 2 & beyond
+```bash
+# 编译
+cargo build --release
 
-Note: This section is for stages 2 and beyond.
+# 运行
+cargo run --release
 
-1. Ensure you have `cargo (1.91)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.rs`. This command compiles your Rust project, so it might be slow
-   the first time you run it. Subsequent runs will be fast.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+# 或直接运行二进制
+./target/release/codecrafters-shell
+```
+
+## 许可证
+
+MIT License

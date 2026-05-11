@@ -29,14 +29,14 @@ pub enum RedirectTarget {
     Heredoc(String),
 }
 
-/// 命令类型：简单命令或管道命令
 #[derive(Debug, Clone)]
-pub enum CommandType {
-    Simple(Command),
-    Pipeline(Vec<Command>), // 管道连接的多个命令
+pub struct CommandGroup {
+    pub commands: Vec<Command>,
+    pub background: bool,
 }
 
-pub fn parse_command(tokens: &[RawToken]) -> CommandType {
+pub fn parse_command(tokens: &[RawToken]) -> Vec<CommandGroup> {
+    let mut command_groups = Vec::new();
     let mut commands = Vec::new();
     let mut current_tokens = Vec::new();
 
@@ -48,6 +48,16 @@ pub fn parse_command(tokens: &[RawToken]) -> CommandType {
                     current_tokens.clear();
                 }
             }
+            RawToken::Background => {
+                if !current_tokens.is_empty() {
+                    commands.push(parse_simple_command(&current_tokens));
+                    current_tokens.clear();
+                }
+                command_groups.push(CommandGroup {
+                    commands: std::mem::take(&mut commands),
+                    background: true,
+                });
+            }
             _ => {
                 current_tokens.push(token.clone());
             }
@@ -57,13 +67,13 @@ pub fn parse_command(tokens: &[RawToken]) -> CommandType {
     // 处理最后一个命令
     if !current_tokens.is_empty() {
         commands.push(parse_simple_command(&current_tokens));
+        command_groups.push(CommandGroup {
+            commands,
+            background: false,
+        });
     }
 
-    if commands.len() == 1 {
-        CommandType::Simple(commands.remove(0))
-    } else {
-        CommandType::Pipeline(commands)
-    }
+    command_groups
 }
 
 pub fn parse_simple_command(tokens: &[RawToken]) -> Command {
@@ -131,21 +141,26 @@ fn parse_redirect_target(token: &RawToken) -> RedirectTarget {
 use std::os::unix::io::FromRawFd;
 /// 命令执行上下文
 #[derive(Debug)]
-pub struct ExecutionContext<'a> {
+pub struct ExecutionContext {
     pub stdin: Option<File>,
     pub stdout: Option<File>,
     pub stderr: Option<File>,
-    pub rl: &'a mut Editor<MyCompleter, FileHistory>,
+    pub background: bool,
 }
 
-impl<'a> ExecutionContext<'a> {
-    pub fn new(rl: &'a mut Editor<MyCompleter, FileHistory>) -> Self {
+impl ExecutionContext {
+    pub fn new() -> Self {
         Self {
             stdin: Some(unsafe { File::from_raw_fd(libc::dup(0)) }),
             stdout: Some(unsafe { File::from_raw_fd(libc::dup(1)) }),
             stderr: Some(unsafe { File::from_raw_fd(libc::dup(2)) }),
-            rl,
+            background: false,
         }
+    }
+    pub fn background() -> Self {
+        let mut context = Self::new();
+        context.background = true;
+        context
     }
 }
 fn exit_code_by_child(child: Option<std::process::Child>) -> i32 {
@@ -156,6 +171,9 @@ pub fn excuete_single_command(
     context: &mut ExecutionContext,
 ) -> anyhow::Result<CommandResult> {
     let mut res = execute_command(command, context)?;
+    if context.background {
+        return Ok(CommandResult::default());
+    }
     Ok(CommandResult::new(exit_code_by_child(res.child.take())))
 }
 /// 执行命令
@@ -177,7 +195,7 @@ pub fn execute_command(
     // 使用简化的命令处理器
     let handler = crate::CommandHandlerFactory::create_handler(command_name);
     let result = handler.execute(command_name, args, context);
-    Ok(result)
+        Ok(result)
 }
 
 /// 应用重定向
@@ -278,7 +296,7 @@ pub fn execute_pipeline(
                 stdin: context.stdin.take(),
                 stdout: context.stdout.take(),
                 stderr: context.stderr.take(),
-                rl: context.rl,
+                background: false,
             };
             let result = execute_command(command, &mut command_context)?;
 

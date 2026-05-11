@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate::GLOBAL_EDITOR;
 /// Exit命令处理器
 pub struct ExitCommand;
 
@@ -8,7 +9,9 @@ impl Builtin for ExitCommand {
         _params: Vec<String>,
         _context: &mut ExecutionContext,
     ) -> BuiltinCommandResult {
-        match crate::history::write_history_file(_context.rl) {
+        let mut rl = GLOBAL_EDITOR.lock().unwrap();
+
+        match crate::history::write_history_file(&mut rl) {
             Ok(_) => {
                 std::process::exit(0);
             }

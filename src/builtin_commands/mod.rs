@@ -3,6 +3,7 @@ mod cd_command;
 mod echo_command;
 mod exit_command;
 mod history_command;
+mod jobs_command;
 mod prelude;
 mod pwd_command;
 mod type_command;
@@ -10,6 +11,7 @@ pub use cd_command::CdCommand;
 pub use echo_command::EchoCommand;
 pub use exit_command::ExitCommand;
 pub use history_command::HistoryCommand;
+pub use jobs_command::JobsCommand;
 pub use pwd_command::PwdCommand;
 use strum::{AsRefStr, Display, EnumIter, EnumString};
 pub use type_command::TypeCommand;
@@ -26,6 +28,7 @@ pub enum BuiltinCommand {
     Echo,
     Type,
     History,
+    Jobs,
 }
 
 /// 表示一个命令执行结果
@@ -65,6 +68,7 @@ impl BuiltinFactory {
             Ok(BuiltinCommand::Pwd) => Some(Box::new(PwdCommand)),
             Ok(BuiltinCommand::Cd) => Some(Box::new(CdCommand)),
             Ok(BuiltinCommand::History) => Some(Box::new(HistoryCommand)),
+            Ok(BuiltinCommand::Jobs) => Some(Box::new(JobsCommand)),
             _ => None,
         }
     }

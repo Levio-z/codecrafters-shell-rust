@@ -28,9 +28,16 @@ impl CommandHandler for ExternalCommandHandler {
                 if let Some(stderr) = context.stderr.take() {
                     cmd.stderr(Stdio::from(stderr));
                 }
+
                 let child = cmd.spawn().context("spawn command failed");
+            
                 match child {
-                    Ok(child) => CommandResult::external_with_child(child),
+                    Ok(child) => {
+                        if context.background {
+                            println!("[1] {}", child.id());
+                        }
+                        CommandResult::external_with_child(child)
+                    }
                     Err(e) => {
                         eprintln!("{}: spawn command failed: {:?}\n", command, e);
                         CommandResult::new(1)

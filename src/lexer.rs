@@ -5,6 +5,7 @@ pub enum RawToken {
     Pipe,         // |
     IoNumber(u8), // 0,1,2... 仅在重定向前有意义
     Redirect(RedirectOp),
+    Background,
 }
 
 /// 重定向操作符
@@ -35,6 +36,12 @@ pub fn tokenize_line(line: &str) -> anyhow::Result<Vec<RawToken>> {
     let mut current_word = String::new();
     let mut state = LexerState::Normal;
     let mut chars = line.chars().peekable();
+    let parse_word = |current_word: &mut String, tokens: &mut Vec<RawToken>| {
+        if !current_word.is_empty() {
+            tokens.push(RawToken::Word(current_word.clone()));
+            current_word.clear();
+        }
+    };
     while let Some(ch) = chars.next() {
         match state {
             LexerState::Normal => {
@@ -42,23 +49,23 @@ pub fn tokenize_line(line: &str) -> anyhow::Result<Vec<RawToken>> {
                     // 空白字符
                     ch if ch.is_whitespace() => {
                         // 这块内容能不能消除重复
-                        if !current_word.is_empty() {
-                            tokens.push(RawToken::Word(current_word.clone()));
-                            current_word.clear();
-                        }
+                        // 这段内容抽取成一个闭包
+                        parse_word(&mut current_word, &mut tokens);
                     }
                     // 管道
                     '|' => {
-                        if !current_word.is_empty() {
-                            tokens.push(RawToken::Word(current_word.clone()));
-                            current_word.clear();
-                        }
+                        parse_word(&mut current_word, &mut tokens);
                         tokens.push(RawToken::Pipe);
+                    }
+                    // 管道
+                    '&' => {
+                        parse_word(&mut current_word, &mut tokens);
+                        tokens.push(RawToken::Background);
                     }
                     // 重定向操作符
                     '>' | '<' => {
-                        if !current_word.is_empty() {
-                            tokens.push(parse_word(&current_word));
+                          if !current_word.is_empty() {
+                            tokens.push(parse_redirect_word(&current_word));
                             current_word.clear();
                         }
                         let op = parse_redirect_op(ch, &mut chars);
@@ -127,7 +134,7 @@ pub fn tokenize_line(line: &str) -> anyhow::Result<Vec<RawToken>> {
 }
 
 /// 解析单词，识别IO编号
-fn parse_word(word: &str) -> RawToken {
+fn parse_redirect_word(word: &str) -> RawToken {
     // 检查是否为IO编号（仅数字，且在重定向前有意义）
     if let Ok(num) = word.parse::<u8>() {
         RawToken::IoNumber(num)
