@@ -13,7 +13,9 @@ use rustyline::{
 };
 
 use crate::{
-    GLOBAL_VEC, builtin_commands::BuiltinCommand, utils::find_all_executable_file_in_paths,
+    GLOBAL_VEC,
+    builtin_commands::{BuiltinCommand, GLOBAL_COMPLETION_MANAGER},
+    utils::find_all_executable_file_in_paths,
 };
 pub struct MyCompleter;
 use strum::IntoEnumIterator;
@@ -49,6 +51,12 @@ impl Completer for MyCompleter {
         let last_whitespace = line.rfind(char::is_whitespace);
         match last_whitespace {
             Some(idx) => {
+                if (idx + 1 == pos || !line[idx + 1..pos].is_empty())
+                    && let Some((pairs, _len)) =
+                        find_complete_and_executable_file(line, &line[0..idx], &line[idx + 1..pos])
+                {
+                    return Ok((idx + 1, pairs));
+                }
                 let (pairs, len) = find_completed_file(&line[idx + 1..pos])?;
                 Ok((idx + len, pairs))
             }
@@ -133,4 +141,38 @@ fn find_completed_file(original: &str) -> Result<(Vec<Pair>, usize), ReadlineErr
         pairs.sort_by(|a, b| a.display.cmp(&b.display));
         (pairs, pos)
     })
+}
+
+fn find_complete_and_executable_file(
+    env_line: &str,
+    original: &str,
+    word: &str,
+) -> Option<(Vec<Pair>, usize)> {
+    let completion_manager = GLOBAL_COMPLETION_MANAGER.lock().unwrap();
+    let line = original.split(' ').collect::<Vec<_>>();
+    let arg1 = line.first().map_or("", |v| v);
+    let arg2 = line.last().map_or("", |v| v);
+    if let Some(path) = completion_manager.completions.get(arg1) {
+        let cmd = std::process::Command::new(path)
+            .args([arg1, word, arg2])
+            .env("COMP_LINE", env_line)
+            .env("COMP_POINT", env_line.len().to_string())
+            .output()
+            .expect("failed to execute");
+
+        let suggestions = String::from_utf8_lossy(&cmd.stdout).to_string();
+        if suggestions.is_empty() {
+            return None;
+        }
+        let suggestions = suggestions
+            .split_whitespace()
+            .map(|s| Pair {
+                replacement: format!("{s} "),
+                display: s.to_string(),
+            })
+            .collect::<Vec<_>>();
+
+        return Some((suggestions, 0));
+    }
+    None
 }

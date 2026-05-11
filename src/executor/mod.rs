@@ -37,7 +37,6 @@ pub struct CommandResult {
     #[allow(dead_code)]
     pub exit_code: i32, // 退出码，0表示成功
     pub child: Option<std::process::Child>,
-    pub pid: Option<u32>,
 }
 impl Default for CommandResult {
     fn default() -> Self {
@@ -49,13 +48,12 @@ impl CommandResult {
         Self {
             exit_code,
             child: None,
-            pid: None,
         }
     }
     pub fn external_with_child(child: std::process::Child) -> Self {
         Self {
             exit_code: 0,
-            pid: Some(child.id()),
+
             child: Some(child),
         }
     }
@@ -66,7 +64,6 @@ impl From<BuiltinCommandResult> for CommandResult {
         Self {
             exit_code: value.exit_code,
             child: None,
-            pid: None,
         }
     }
 }

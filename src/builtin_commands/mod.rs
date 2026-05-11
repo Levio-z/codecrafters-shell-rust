@@ -9,7 +9,7 @@ mod prelude;
 mod pwd_command;
 mod type_command;
 pub use cd_command::CdCommand;
-pub use complete_command::CompleteCommand;
+pub use complete_command::{CompleteCommand, GLOBAL_COMPLETION_MANAGER};
 pub use echo_command::EchoCommand;
 pub use exit_command::ExitCommand;
 pub use history_command::HistoryCommand;
