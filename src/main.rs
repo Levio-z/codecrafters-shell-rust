@@ -8,22 +8,23 @@ mod parse;
 mod utils;
 use std::{
     path::PathBuf,
-    sync::{Arc, LazyLock, Mutex},
-    thread,
+    sync::{LazyLock, Mutex},
 };
 
-use anyhow::Context;
 use auto_completion::MyCompleter;
 use executor::CommandHandlerFactory;
 use rustyline::{
-    DefaultEditor, Editor,
-    config::{CompletionType, Config, Configurer},
+    Editor,
+    config::{CompletionType, Config},
     error::ReadlineError,
     history::FileHistory,
 };
 
-use crate::parse::{
-    CommandGroup, ExecutionContext, excuete_single_command, execute_pipeline, parse_command,
+use crate::{
+    builtin_commands::JobList,
+    parse::{
+        CommandGroup, ExecutionContext, excuete_single_command, execute_pipeline, parse_command,
+    },
 };
 
 pub static GLOBAL_VEC: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
@@ -45,10 +46,13 @@ static GLOBAL_EDITOR: LazyLock<Mutex<Editor<MyCompleter, FileHistory>>> = LazyLo
     let mut rl = Editor::with_config(config).unwrap();
 
     rl.set_helper(Some(completer));
-    history::read_history_file(&mut rl);
+    let _ = history::read_history_file(&mut rl);
 
     Mutex::new(rl)
 });
+
+pub static GLOBAL_JOB: LazyLock<Mutex<JobList>> = LazyLock::new(|| Mutex::new(JobList::new()));
+
 fn main() -> anyhow::Result<()> {
     loop {
         let line = {
@@ -119,6 +123,10 @@ fn parse_and_handle_line(line: &str) -> anyhow::Result<()> {
         }
     }
 
+    let s = GLOBAL_JOB.lock().unwrap().list_done_jobs();
+    if !s.is_empty() {
+        print!("{}", s);
+    }
     // // 执行命令
     //
     //     if command_groups.background {

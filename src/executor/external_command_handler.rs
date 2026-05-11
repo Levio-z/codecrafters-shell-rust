@@ -1,5 +1,7 @@
 /// 外部命令处理器
 use super::prelude::*;
+use crate::GLOBAL_JOB;
+
 pub struct ExternalCommandHandler;
 
 impl CommandHandler for ExternalCommandHandler {
@@ -30,11 +32,14 @@ impl CommandHandler for ExternalCommandHandler {
                 }
 
                 let child = cmd.spawn().context("spawn command failed");
-            
+
                 match child {
                     Ok(child) => {
-                        if context.background {
-                            println!("[1] {}", child.id());
+                        if let Some(id) = &context.job {
+                            println!("[{}] {}", id, child.id());
+                            let mut joblist = GLOBAL_JOB.lock().unwrap();
+                            joblist.update_pid(*id, child.id(), child);
+                            return CommandResult::new(1);
                         }
                         CommandResult::external_with_child(child)
                     }

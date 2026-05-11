@@ -1,9 +1,7 @@
 use std::fs::File;
 
-use rustyline::{Editor, history::FileHistory};
-
 use crate::{
-    auto_completion::MyCompleter,
+    builtin_commands::Job,
     executor::CommandResult,
     lexer::{RawToken, RedirectOp},
 };
@@ -146,6 +144,7 @@ pub struct ExecutionContext {
     pub stdout: Option<File>,
     pub stderr: Option<File>,
     pub background: bool,
+    pub job: Option<usize>,
 }
 
 impl ExecutionContext {
@@ -155,12 +154,8 @@ impl ExecutionContext {
             stdout: Some(unsafe { File::from_raw_fd(libc::dup(1)) }),
             stderr: Some(unsafe { File::from_raw_fd(libc::dup(2)) }),
             background: false,
+            job: None,
         }
-    }
-    pub fn background() -> Self {
-        let mut context = Self::new();
-        context.background = true;
-        context
     }
 }
 fn exit_code_by_child(child: Option<std::process::Child>) -> i32 {
@@ -194,8 +189,18 @@ pub fn execute_command(
 
     // 使用简化的命令处理器
     let handler = crate::CommandHandlerFactory::create_handler(command_name);
-    let result = handler.execute(command_name, args, context);
-        Ok(result)
+
+    let job = if context.background {
+        let mut arg = command.argv.clone().join(" ");
+        arg.push(' ');
+        Some(Job::run(arg))
+    } else {
+        None
+    };
+    context.job = job;
+
+    let result = handler.execute(command_name, args.clone(), context);
+    Ok(result)
 }
 
 /// 应用重定向
@@ -297,6 +302,7 @@ pub fn execute_pipeline(
                 stdout: context.stdout.take(),
                 stderr: context.stderr.take(),
                 background: false,
+                job: None,
             };
             let result = execute_command(command, &mut command_context)?;
 

@@ -1,5 +1,6 @@
 use crate::parse::ExecutionContext;
 mod cd_command;
+mod complete_command;
 mod echo_command;
 mod exit_command;
 mod history_command;
@@ -8,10 +9,11 @@ mod prelude;
 mod pwd_command;
 mod type_command;
 pub use cd_command::CdCommand;
+pub use complete_command::CompleteCommand;
 pub use echo_command::EchoCommand;
 pub use exit_command::ExitCommand;
 pub use history_command::HistoryCommand;
-pub use jobs_command::JobsCommand;
+pub use jobs_command::{Job, JobList, JobsCommand};
 pub use pwd_command::PwdCommand;
 use strum::{AsRefStr, Display, EnumIter, EnumString};
 pub use type_command::TypeCommand;
@@ -29,6 +31,7 @@ pub enum BuiltinCommand {
     Type,
     History,
     Jobs,
+    Complete,
 }
 
 /// 表示一个命令执行结果
@@ -69,6 +72,7 @@ impl BuiltinFactory {
             Ok(BuiltinCommand::Cd) => Some(Box::new(CdCommand)),
             Ok(BuiltinCommand::History) => Some(Box::new(HistoryCommand)),
             Ok(BuiltinCommand::Jobs) => Some(Box::new(JobsCommand)),
+            Ok(BuiltinCommand::Complete) => Some(Box::new(CompleteCommand)),
             _ => None,
         }
     }

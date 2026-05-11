@@ -64,7 +64,7 @@ pub fn tokenize_line(line: &str) -> anyhow::Result<Vec<RawToken>> {
                     }
                     // 重定向操作符
                     '>' | '<' => {
-                          if !current_word.is_empty() {
+                        if !current_word.is_empty() {
                             tokens.push(parse_redirect_word(&current_word));
                             current_word.clear();
                         }
