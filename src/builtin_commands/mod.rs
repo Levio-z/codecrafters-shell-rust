@@ -1,6 +1,7 @@
 use crate::parse::ExecutionContext;
 mod cd_command;
 mod complete_command;
+mod declare_command;
 mod echo_command;
 mod exit_command;
 mod history_command;
@@ -10,6 +11,7 @@ mod pwd_command;
 mod type_command;
 pub use cd_command::CdCommand;
 pub use complete_command::{CompleteCommand, GLOBAL_COMPLETION_MANAGER};
+pub use declare_command::{DeclareCommand, GLOBAL_COMPLETION_DECLARE};
 pub use echo_command::EchoCommand;
 pub use exit_command::ExitCommand;
 pub use history_command::HistoryCommand;
@@ -32,6 +34,7 @@ pub enum BuiltinCommand {
     History,
     Jobs,
     Complete,
+    Declare,
 }
 
 /// 表示一个命令执行结果
@@ -73,6 +76,7 @@ impl BuiltinFactory {
             Ok(BuiltinCommand::History) => Some(Box::new(HistoryCommand)),
             Ok(BuiltinCommand::Jobs) => Some(Box::new(JobsCommand)),
             Ok(BuiltinCommand::Complete) => Some(Box::new(CompleteCommand)),
+            Ok(BuiltinCommand::Declare) => Some(Box::new(DeclareCommand)),
             _ => None,
         }
     }

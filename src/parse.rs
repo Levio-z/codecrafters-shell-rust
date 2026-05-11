@@ -1,7 +1,9 @@
 use std::fs::File;
 
+use regex::Regex;
+
 use crate::{
-    builtin_commands::Job,
+    builtin_commands::{GLOBAL_COMPLETION_DECLARE, Job},
     executor::CommandResult,
     lexer::{RawToken, RedirectOp},
 };
@@ -82,7 +84,11 @@ pub fn parse_simple_command(tokens: &[RawToken]) -> Command {
     while i < tokens.len() {
         match &tokens[i] {
             RawToken::Word(w) => {
-                argv.push(w.clone());
+                let expanded = expand(w);
+                if !expanded.is_empty() {
+                    argv.push(expanded);
+                }
+
                 i += 1;
             }
 
@@ -328,4 +334,22 @@ pub fn execute_pipeline(
         }
     }
     Ok(CommandResult::new(last_exit_code))
+}
+
+fn expand(input: &str) -> String {
+    let env = &GLOBAL_COMPLETION_DECLARE.lock().unwrap().completions;
+
+    let re = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}|\$([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+
+    re.replace_all(input, |caps: &regex::Captures| {
+        // ${VAR}
+        let name = caps
+            .get(1)
+            .or_else(|| caps.get(2))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+
+        env.get(name).cloned().unwrap_or_default()
+    })
+    .to_string()
 }
